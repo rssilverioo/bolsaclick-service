@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
@@ -12,9 +13,9 @@ export class RedisService implements OnModuleDestroy {
       throw new Error('REDIS_URL is not defined in the environment variables');
     }
 
-    this.redis = new Redis(redisUrl, {
-      tls: {} // Ativa TLS para conexão segura
-    });
+    const isSecure = redisUrl.startsWith('rediss://');
+
+    this.redis = new Redis(redisUrl, isSecure ? { tls: {} } : {});
   }
 
   getClient(): Redis {
