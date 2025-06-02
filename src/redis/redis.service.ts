@@ -6,11 +6,14 @@ export class RedisService implements OnModuleDestroy {
   private readonly redis: Redis;
 
   constructor() {
-    this.redis = new Redis({
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT),
-      password: process.env.REDIS_PASSWORD,
-      tls: {}, // obrigatório se for usar host externo com SSL (ex: Railway proxy)
+    const redisUrl = process.env.REDIS_URL;
+
+    if (!redisUrl) {
+      throw new Error('REDIS_URL is not defined in the environment variables');
+    }
+
+    this.redis = new Redis(redisUrl, {
+      tls: {} // Ativa TLS para conexão segura
     });
   }
 
