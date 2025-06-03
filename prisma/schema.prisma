@@ -46,3 +46,15 @@ model UniversityCourse {
 
   @@unique([courseId, universityId])
 }
+
+model City {
+  id        String   @id @default(uuid())
+  city      String
+  state     String
+  lat       Float
+  lon       Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([city, state])
+}
