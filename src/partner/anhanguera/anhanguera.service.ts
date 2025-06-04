@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
+
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -144,7 +144,6 @@ export class AnhangueraService {
         course: true,
         university: true,
       },
-      take: 3, // limite de teste
     });
 
     const cities = await this.prisma.city.findMany({
