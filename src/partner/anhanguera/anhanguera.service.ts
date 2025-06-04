@@ -35,7 +35,7 @@ export class AnhangueraService {
   constructor(
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
-  ) { }
+  ) {}
 
   @Cron('0 2 * * 5')
   async handleWeeklySync() {
@@ -55,7 +55,7 @@ export class AnhangueraService {
       modality,
     )}&city=${encodeURIComponent(city)}&state=${state}&course=${courseId}&courseName=${encodeURIComponent(
       courseName,
-    )}&app=DC&size=2`;
+    )}&app=DC&size=10`;
 
     const { data } = await axios.get(url);
     return data?.data || [];
@@ -73,7 +73,7 @@ export class AnhangueraService {
       modality,
     )}&courseId=${courseId}&courseName=${encodeURIComponent(
       courseName,
-    )}&unitId=${unitId}&city=${encodeURIComponent(city)}&state=${state}&app=DC&size=2`;
+    )}&unitId=${unitId}&city=${encodeURIComponent(city)}&state=${state}&app=DC`;
 
     const { data } = await axios.get(url);
 
@@ -110,8 +110,7 @@ export class AnhangueraService {
       include: { course: true, university: true },
     });
 
-const cities = await this.prisma.city.findMany();
-
+    const cities = await this.prisma.city.findMany();
     const modalities = ['A distância', 'Presencial', 'Semipresencial'];
 
     const fullOffers: ShowOfferResponse[] = [];
@@ -152,7 +151,7 @@ const cities = await this.prisma.city.findMany();
                   subscriptionValue: offer.subscriptionValue ?? 0,
                   montlyFeeFrom: offer.montlyFeeFrom ?? 0,
                   montlyFeeTo: offer.montlyFeeTo ?? 0,
-                  expiredAt: offer.expiredAt ?? 0,
+                  expiredAt: offer.expiredAt ?? '',
                   brand,
                   courseName,
                   courseSlug,
@@ -168,9 +167,7 @@ const cities = await this.prisma.city.findMany();
               }
 
               totalOffers += offers.length;
-              console.log(
-                `✅ ${offers.length} ofertas salvas para unidade ${unit.unitId}`,
-              );
+              console.log(`✅ ${offers.length} ofertas salvas para unidade ${unit.unitId}`);
             }
           } catch (error) {
             console.error(
@@ -185,10 +182,25 @@ const cities = await this.prisma.city.findMany();
     await this.redisService.set(
       'offers:anhanguera:full',
       JSON.stringify(fullOffers),
-
     );
+
     console.log(`📦 ${fullOffers.length} ofertas salvas em offers:anhanguera:full`);
     console.log(`🎯 Total de ofertas cadastradas: ${totalOffers}`);
+
+    // ✅ Enviar webhook para o n8n
+    try {
+      await axios.post('https://aula-n8n.jru58d.easypanel.host/webhook/sync-finished', {
+        status: 'success',
+        source: 'anhanguera',
+        totalOffers,
+        syncedAt: new Date().toISOString(),
+      });
+
+      console.log('📬 Webhook de finalização enviado para o n8n');
+    } catch (err) {
+      console.error('❌ Falha ao enviar webhook para o n8n:', err.message);
+    }
+
     return totalOffers;
   }
 
