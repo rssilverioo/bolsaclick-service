@@ -46,7 +46,7 @@ export class AnhangueraService {
       modality,
     )}&city=${encodeURIComponent(city)}&state=${state}&course=${courseId}&courseName=${encodeURIComponent(
       courseName,
-    )}&app=DC&size=1000`;
+    )}&app=DC`;
 
     const { data } = await axios.get(url);
     return data?.data || [];
