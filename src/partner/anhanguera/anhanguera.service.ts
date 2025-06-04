@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -7,6 +8,7 @@ import axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { RedisService } from 'src/redis/redis.service';
 import { Cron } from '@nestjs/schedule';
+import { format } from 'date-fns';
 
 // Tipo simplificado da oferta. Você pode expandir se quiser.
 type ShiftOffer = {
@@ -26,7 +28,7 @@ export class AnhangueraService {
   constructor(
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   @Cron('0 2 * * 5') // Toda sexta-feira às 2h da manhã
   async handleWeeklySync() {
@@ -92,6 +94,16 @@ export class AnhangueraService {
   }
 
   async syncAllOffers() {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const previous = format(new Date(Date.now() - 1000 * 60 * 60 * 24 * 7), 'yyyy-MM-dd');
+
+    console.log(`🕒 Rodando sync para data: ${today}`);
+    console.log(`🧹 Limpando dados antigos: ${previous}`);
+
+
+    await this.redisService.deleteByPattern(`offers:anhanguera:${previous}:*`);
+    await this.redisService.deleteByPattern(`unit:anhanguera::${previous}:*`);
+
     const universityCourses = await this.prisma.universityCourse.findMany({
       where: {
         university: {
@@ -142,19 +154,11 @@ export class AnhangueraService {
                 modality,
               );
 
-              const offerKey = `offers:anhanguera:${courseId}:${unit.unitId}:${modality}`;
-              const unitKey = `unit:anhanguera:${unit.unitId}`;
+              const offerKey = `offers:anhanguera:${today}:${courseId}:${unit.unitId}:${modality}`;
+              const unitKey = `unit:anhanguera::${today}:${unit.unitId}`;
 
-              await this.redisService.set(
-                offerKey,
-                JSON.stringify(offers),
-                60 * 60 * 24 * 7,
-              );
-              await this.redisService.set(
-                unitKey,
-                JSON.stringify(unit),
-                60 * 60 * 24 * 7,
-              );
+              await this.redisService.set(offerKey, JSON.stringify(offers), 60 * 60 * 24 * 7);
+              await this.redisService.set(unitKey, JSON.stringify(unit), 60 * 60 * 24 * 7);
 
               console.log(
                 `✅ Unidade ${unit.unitId} | ${offers.length} ofertas`,
@@ -172,4 +176,13 @@ export class AnhangueraService {
 
     console.log('🎉 Finalizado syncAllOffers');
   }
+
+  async deleteAllAnhangueraData() {
+  console.log('🧨 Limpando TODAS as chaves da Anhanguera no Redis...');
+
+  await this.redisService.deleteByPattern('offers:anhanguera:*');
+  await this.redisService.deleteByPattern('unit:anhanguera:*');
+
+  console.log('✅ Dados da Anhanguera removidos do Redis com sucesso');
+}
 }

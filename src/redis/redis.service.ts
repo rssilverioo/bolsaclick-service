@@ -38,7 +38,15 @@ export class RedisService implements OnModuleDestroy {
   async keys(pattern: string): Promise<string[]> {
     return this.redis.keys(pattern);
   }
-
+  async deleteByPattern(pattern: string): Promise<void> {
+    const keys = await this.redis.keys(pattern);
+    if (keys.length > 0) {
+      await this.redis.del(...keys);
+      console.log(`🧹 ${keys.length} chaves removidas com padrão "${pattern}"`);
+    } else {
+      console.log(`ℹ️ Nenhuma chave encontrada para o padrão "${pattern}"`);
+    }
+  }
   async onModuleDestroy() {
     await this.redis.quit();
   }
