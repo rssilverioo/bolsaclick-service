@@ -20,6 +20,7 @@ export interface ShowOfferResponse {
   brand: string;
   courseName: string;
   courseSlug: string;
+  courseNameInternal: string;
   courseExternalId: string;
   unit: {
     address: string;
@@ -120,6 +121,7 @@ const cities = await this.prisma.city.findMany();
       const courseId = uc.externalId;
       const courseName = uc.externalName;
       const courseSlug = uc.course.slug;
+      const courseNameInternal = uc.course.name;
       const brand = uc.university.slug;
 
       for (const city of cities) {
@@ -154,6 +156,7 @@ const cities = await this.prisma.city.findMany();
                   brand,
                   courseName,
                   courseSlug,
+                  courseNameInternal,
                   courseExternalId: courseId,
                   unit: {
                     address: unit.unitAddress || '',
