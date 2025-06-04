@@ -8,16 +8,22 @@ export class OffersController {
 
   @Get()
   async getFilteredOffers(
-    @Query('course') course?: string,
+    @Query('course') course?: string, // slug do curso
     @Query('city') city?: string,
     @Query('state') state?: string,
     @Query('brand') brand?: string,
-  ): Promise<ShowOfferResponse[]> {
-    return this.offersService.showOffersWithFilters({
+  ): Promise<{ success: boolean; total: number; data: ShowOfferResponse[] }> {
+    const offers = await this.offersService.showOffersWithFilters({
       course,
       city,
       state,
       brand,
     });
+
+    return {
+      success: true,
+      total: offers.length,
+      data: offers,
+    };
   }
 }

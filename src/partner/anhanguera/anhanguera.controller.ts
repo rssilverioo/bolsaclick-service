@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Post,
-  Headers,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Controller, Post, Headers } from '@nestjs/common';
 import { AnhangueraService } from './anhanguera.service';
 import { ApiExcludeController } from '@nestjs/swagger';
 
@@ -13,11 +8,7 @@ export class AnhangueraController {
   constructor(private readonly anhangueraService: AnhangueraService) {}
 
   @Post('sync-all')
-  async syncAll(@Headers('x-api-key') apiKey: string) {
-    if (apiKey !== process.env.CRON_API_KEY) {
-      throw new UnauthorizedException('Invalid API Key');
-    }
-
+  async syncAll() {
     const totalOffers = await this.anhangueraService.syncAllOffers();
 
     return {
@@ -28,11 +19,7 @@ export class AnhangueraController {
   }
 
   @Post('flush-all')
-  async flushAll(@Headers('x-api-key') apiKey: string) {
-    if (apiKey !== process.env.CRON_API_KEY) {
-      throw new UnauthorizedException('Invalid API Key');
-    }
-
+  async flushAll() {
     await this.anhangueraService.deleteAllAnhangueraData();
     return {
       success: true,

@@ -1,9 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { RedisService } from 'src/redis/redis.service';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { ShowOfferResponse } from './offer.type';
+
 interface OfferFilters {
   course?: string;
   city?: string;
@@ -13,81 +11,21 @@ interface OfferFilters {
 
 @Injectable()
 export class OffersService {
-  constructor(
-    private readonly redisService: RedisService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly redisService: RedisService) {}
 
   async showOffers(): Promise<ShowOfferResponse[]> {
-    const keys = await this.redisService.keys('offers:*:*');
-    const offersList: ShowOfferResponse[] = [];
-    const slugCache = new Map<string, string>(); // externalId → slug
+    const data = await this.redisService.get('offers:anhanguera:full');
 
-    for (const key of keys) {
-      const parts = key.split(':');
-      const brand = parts[1];
-      const externalId = parts[2];
-      const unitId = parts[3];
-
-      const [offersRaw, unitRaw] = await Promise.all([
-        this.redisService.get(key),
-        this.redisService
-          .get(`unit:${brand}:${unitId}`)
-          .then((res) => (res ? res : this.redisService.get(`unit:${unitId}`))),
-      ]);
-
-      if (typeof offersRaw !== 'string' || typeof unitRaw !== 'string')
-        continue;
-
-      try {
-        const offers = JSON.parse(offersRaw);
-        const unit = JSON.parse(unitRaw);
-
-        // ✅ pega o slug a partir do externalId (usa cache para evitar repetição)
-        let courseSlug = slugCache.get(externalId);
-        if (!courseSlug) {
-          const course = await this.prisma.course.findFirst({
-            where: {
-              universityCourses: {
-                some: {
-                  externalId,
-                },
-              },
-            },
-            select: { slug: true },
-          });
-
-          courseSlug = course?.slug || '';
-          slugCache.set(externalId, courseSlug);
-        }
-
-        for (const offer of offers) {
-          offersList.push({
-            offerId: offer.offerId,
-            shift: offer.shift,
-            subscriptionValue: offer.subscriptionValue,
-            monthlyFeeFrom: offer.montlyFeeFrom,
-            monthlyFeeTo: offer.montlyFeeTo,
-            expirationDate: offer.expiredAt,
-            brand: offer.brand ?? brand,
-            courseName: offer.course ?? '',
-            courseSlug,
-            courseExternalId: externalId,
-            unit: {
-              address: unit.unitAddress || '',
-              city: unit.unitCity || unit.city || '',
-              state: unit.unitState || unit.state || '',
-              modality: offer.modality || '',
-            },
-          });
-        }
-      } catch (err) {
-        console.warn(`❌ Failed to parse offer at ${key}:`, err);
-        continue;
-      }
+    if (!data || typeof data !== 'string') {
+      return [];
     }
 
-    return offersList;
+    try {
+      return JSON.parse(data) as ShowOfferResponse[];
+    } catch (error) {
+      console.error('❌ Erro ao fazer parse das ofertas:', error);
+      return [];
+    }
   }
 
   async showOffersWithFilters(

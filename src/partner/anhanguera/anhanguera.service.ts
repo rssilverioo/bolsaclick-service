@@ -10,18 +10,24 @@ import { RedisService } from 'src/redis/redis.service';
 import { Cron } from '@nestjs/schedule';
 import { format } from 'date-fns';
 
-// Tipo simplificado da oferta. Você pode expandir se quiser.
-type ShiftOffer = {
+export interface ShowOfferResponse {
   offerId: string;
-  course: string;
-  unit: string;
-  unitId: string;
-  modality: string;
+  shift: string;
   subscriptionValue: number;
+  montlyFeeFrom: number;
   montlyFeeTo: number;
-  financialBusinessOffer?: any;
-  lateEnrollment?: any;
-};
+  expiredAt: string;
+  brand: string;
+  courseName: string;
+  courseSlug: string;
+  courseExternalId: string;
+  unit: {
+    address: string;
+    city: string;
+    state: string;
+    modality: string;
+  };
+}
 
 @Injectable()
 export class AnhangueraService {
@@ -30,7 +36,7 @@ export class AnhangueraService {
     private readonly prisma: PrismaService,
   ) { }
 
-  @Cron('0 2 * * 5') // Toda sexta-feira às 2h da manhã
+  @Cron('0 2 * * 5')
   async handleWeeklySync() {
     console.log('🔄 [CRON] Iniciando syncAllOffers para Anhanguera...');
     await this.syncAllOffers();
@@ -48,7 +54,7 @@ export class AnhangueraService {
       modality,
     )}&city=${encodeURIComponent(city)}&state=${state}&course=${courseId}&courseName=${encodeURIComponent(
       courseName,
-    )}&app=DC`;
+    )}&app=DC&size=2`;
 
     const { data } = await axios.get(url);
     return data?.data || [];
@@ -61,74 +67,60 @@ export class AnhangueraService {
     state: string,
     courseName: string,
     modality: string,
-  ): Promise<ShiftOffer[]> {
+  ): Promise<ShowOfferResponse[]> {
     const url = `https://api.consultoriaeducacao.app.br/offers/v3/showShiftOffers?brand=anhanguera&modality=${encodeURIComponent(
       modality,
     )}&courseId=${courseId}&courseName=${encodeURIComponent(
       courseName,
-    )}&unitId=${unitId}&city=${encodeURIComponent(city)}&state=${state}&app=DC`;
+    )}&unitId=${unitId}&city=${encodeURIComponent(city)}&state=${state}&app=DC&size=2`;
 
     const { data } = await axios.get(url);
 
-    const offers: ShiftOffer[] = [];
-
-    const shifts = data?.data?.shifts as Record<
-      string,
-      Record<string, ShiftOffer>
-    >;
+    const offers: ShowOfferResponse[] = [];
+    const shifts = data?.data?.shifts as Record<string, unknown>;
 
     if (shifts) {
       for (const group of Object.values(shifts)) {
-        for (const offer of Object.values(group)) {
-          offers.push(offer);
+        if (typeof group === 'object' && group !== null) {
+          for (const offer of Object.values(group as Record<string, unknown>)) {
+            offers.push(offer as ShowOfferResponse);
+          }
         }
       }
     }
 
-    console.log(
-      `🧾 Ofertas para unitId=${unitId} (curso: ${courseName}):`,
-      JSON.stringify(offers, null, 2),
-    );
-
     return offers;
   }
 
-  async syncAllOffers() {
-
-
+  async syncAllOffers(): Promise<number> {
     const today = format(new Date(), 'yyyy-MM-dd');
-    const previous = format(new Date(Date.now() - 1000 * 60 * 60 * 24 * 7), 'yyyy-MM-dd');
+    const previous = format(
+      new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
+      'yyyy-MM-dd',
+    );
 
     console.log(`🕒 Rodando sync para data: ${today}`);
     console.log(`🧹 Limpando dados antigos: ${previous}`);
 
-
-    await this.redisService.deleteByPattern(`offers:anhanguera:${previous}:*`);
-    await this.redisService.deleteByPattern(`unit:anhanguera::${previous}:*`);
+    await this.redisService.deleteByPattern('offers:anhanguera:full');
 
     const universityCourses = await this.prisma.universityCourse.findMany({
-      where: {
-        university: {
-          slug: 'anhanguera',
-        },
-      },
-      include: {
-        course: true,
-        university: true,
-      },
+      where: { university: { slug: 'anhanguera' } },
+      include: { course: true, university: true },
     });
 
-    const cities = await this.prisma.city.findMany();
+const cities = await this.prisma.city.findMany();
 
     const modalities = ['A distância', 'Presencial', 'Semipresencial'];
- let totalOffers = 0;
+
+    const fullOffers: ShowOfferResponse[] = [];
+    let totalOffers = 0;
+
     for (const uc of universityCourses) {
       const courseId = uc.externalId;
       const courseName = uc.externalName;
-
-      console.log(`🎓 Curso: ${uc.course.name}`);
-      console.log(`📦 externalId: ${courseId}`);
-      console.log(`📘 externalName: ${courseName}`);
+      const courseSlug = uc.course.slug;
+      const brand = uc.university.slug;
 
       for (const city of cities) {
         for (const modality of modalities) {
@@ -141,11 +133,6 @@ export class AnhangueraService {
               modality,
             );
 
-            console.log(
-              `📍 Cidade: ${city.city}, Estado: ${city.state}, Modalidade: ${modality}`,
-            );
-            console.log(`🏢 ${units.length} unidades encontradas`);
-
             for (const unit of units) {
               const offers = await this.fetchOffersByUnit(
                 unit.unitId,
@@ -156,14 +143,30 @@ export class AnhangueraService {
                 modality,
               );
 
-              const offerKey = `offers:anhanguera:${today}:${courseId}:${unit.unitId}:${modality}`;
-              const unitKey = `unit:anhanguera::${today}:${unit.unitId}`;
+              for (const offer of offers) {
+                fullOffers.push({
+                  offerId: offer.offerId,
+                  shift: offer.shift ?? '',
+                  subscriptionValue: offer.subscriptionValue ?? 0,
+                  montlyFeeFrom: offer.montlyFeeFrom ?? 0,
+                  montlyFeeTo: offer.montlyFeeTo ?? 0,
+                  expiredAt: offer.expiredAt ?? 0,
+                  brand,
+                  courseName,
+                  courseSlug,
+                  courseExternalId: courseId,
+                  unit: {
+                    address: unit.unitAddress || '',
+                    city: unit.unitCity || unit.city || '',
+                    state: unit.unitState || unit.state || '',
+                    modality,
+                  },
+                });
+              }
 
-              await this.redisService.set(offerKey, JSON.stringify(offers), 60 * 60 * 24 * 7);
-              await this.redisService.set(unitKey, JSON.stringify(unit), 60 * 60 * 24 * 7);
- totalOffers += offers.length;
+              totalOffers += offers.length;
               console.log(
-                `✅ Unidade ${unit.unitId} | ${offers.length} ofertas`,
+                `✅ ${offers.length} ofertas salvas para unidade ${unit.unitId}`,
               );
             }
           } catch (error) {
@@ -175,17 +178,21 @@ export class AnhangueraService {
         }
       }
     }
-  console.log(`🎯 Total de ofertas cadastradas: ${totalOffers}`);
-    console.log('🎉 Finalizado syncAllOffers');
-    return totalOffers; 
+
+    await this.redisService.set(
+      'offers:anhanguera:full',
+      JSON.stringify(fullOffers),
+
+    );
+    console.log(`📦 ${fullOffers.length} ofertas salvas em offers:anhanguera:full`);
+    console.log(`🎯 Total de ofertas cadastradas: ${totalOffers}`);
+    return totalOffers;
   }
 
   async deleteAllAnhangueraData() {
-  console.log('🧨 Limpando TODAS as chaves da Anhanguera no Redis...');
-
-  await this.redisService.deleteByPattern('offers:anhanguera:*');
-  await this.redisService.deleteByPattern('unit:anhanguera:*');
-
-  console.log('✅ Dados da Anhanguera removidos do Redis com sucesso');
-}
+    console.log('🧨 Limpando TODAS as chaves da Anhanguera no Redis...');
+    await this.redisService.deleteByPattern('offers:anhanguera:*');
+    await this.redisService.deleteByPattern('unit:anhanguera:*');
+    console.log('✅ Dados da Anhanguera removidos do Redis com sucesso');
+  }
 }
