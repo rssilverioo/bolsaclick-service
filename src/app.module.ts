@@ -6,15 +6,23 @@ import { CourseModule } from './course/course.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UniversityModule } from './university/university.module';
 import { CityModule } from './city/city.module';
+import { AnhangueraModule } from './partner/anhanguera/anhanguera.module';
+import { OffersAnhangueraModule } from './partner/anhanguera/offers/offers.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { OffersModule } from './offers/offers.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     RedisModule,
     CourseModule,
     PrismaModule,
     UniversityModule,
     CityModule,
+    AnhangueraModule,
+    OffersAnhangueraModule,
+    OffersModule,
   ],
   controllers: [AppController],
 })

@@ -1,7 +1,8 @@
-/* eslint-disable prettier/prettier */
 import { Controller, Get } from '@nestjs/common';
 import { RedisService } from './redis.service';
+import { ApiExcludeController } from '@nestjs/swagger';
 
+@ApiExcludeController()
 @Controller('redis')
 export class RedisController {
   constructor(private readonly redisService: RedisService) {}
