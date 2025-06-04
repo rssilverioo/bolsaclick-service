@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -28,21 +27,24 @@ export class AnhangueraService {
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
   ) {}
+
   @Cron('0 2 * * 5') // Toda sexta-feira às 2h da manhã
   async handleWeeklySync() {
     console.log('🔄 [CRON] Iniciando syncAllOffers para Anhanguera...');
     await this.syncAllOffers();
     console.log('✅ [CRON] Finalizado syncAllOffers para Anhanguera.');
   }
+
   async fetchUnitsByCourse(
     courseId: string,
     courseName: string,
     city: string,
     state: string,
+    modality: string,
   ) {
-    const url = `https://api.consultoriaeducacao.app.br/offers/v3/showCaseFilter?brand=anhanguera&modality=A+dist%C3%A2ncia&city=${encodeURIComponent(
-      city,
-    )}&state=${state}&course=${courseId}&courseName=${encodeURIComponent(
+    const url = `https://api.consultoriaeducacao.app.br/offers/v3/showCaseFilter?brand=anhanguera&modality=${encodeURIComponent(
+      modality,
+    )}&city=${encodeURIComponent(city)}&state=${state}&course=${courseId}&courseName=${encodeURIComponent(
       courseName,
     )}&app=DC&size=2`;
 
@@ -56,8 +58,11 @@ export class AnhangueraService {
     city: string,
     state: string,
     courseName: string,
+    modality: string,
   ): Promise<ShiftOffer[]> {
-    const url = `https://api.consultoriaeducacao.app.br/offers/v3/showShiftOffers?brand=anhanguera&modality=A+dist%C3%A2ncia&courseId=${courseId}&courseName=${encodeURIComponent(
+    const url = `https://api.consultoriaeducacao.app.br/offers/v3/showShiftOffers?brand=anhanguera&modality=${encodeURIComponent(
+      modality,
+    )}&courseId=${courseId}&courseName=${encodeURIComponent(
       courseName,
     )}&unitId=${unitId}&city=${encodeURIComponent(city)}&state=${state}&app=DC`;
 
@@ -86,53 +91,6 @@ export class AnhangueraService {
     return offers;
   }
 
-  async syncOffers(
-    courseId: string,
-    courseName: string,
-    city: string,
-    state: string,
-  ) {
-    console.log(`➡️ Buscando unidades para curso: ${courseName}`);
-    console.log(`📍 Cidade: ${city}, Estado: ${state}`);
-
-    const units = await this.fetchUnitsByCourse(
-      courseId,
-      courseName,
-      city,
-      state,
-    );
-
-    console.log(`🏢 ${units.length} unidades encontradas`);
-
-    for (const unit of units) {
-      const offers = await this.fetchOffersByUnit(
-        unit.unitId,
-        courseId,
-        unit.city,
-        unit.state,
-        courseName,
-      );
-
-      const redisKey = `offers:anhanguera:${courseId}:${unit.unitId}`;
-      const unitKey = `unit:anhanguera:${unit.unitId}`;
-
-      await this.redisService.set(
-        redisKey,
-        JSON.stringify(offers),
-        60 * 60 * 24 * 7,
-      );
-      await this.redisService.set(
-        unitKey,
-        JSON.stringify(unit),
-        60 * 60 * 24 * 7,
-      );
-
-      console.log(
-        `✅ Unidade ${unit.unitId} salva com ${offers.length} ofertas.`,
-      );
-    }
-  }
-
   async syncAllOffers() {
     const universityCourses = await this.prisma.universityCourse.findMany({
       where: {
@@ -146,12 +104,9 @@ export class AnhangueraService {
       },
     });
 
-    const cities = await this.prisma.city.findMany({
-      where: {
-        city: 'São Paulo',
-        state: 'SP',
-      },
-    });
+    const cities = await this.prisma.city.findMany();
+
+    const modalities = ['A distância', 'Presencial', 'Semipresencial'];
 
     for (const uc of universityCourses) {
       const courseId = uc.externalId;
@@ -162,47 +117,55 @@ export class AnhangueraService {
       console.log(`📘 externalName: ${courseName}`);
 
       for (const city of cities) {
-        try {
-          const units = await this.fetchUnitsByCourse(
-            courseId,
-            courseName,
-            city.city,
-            city.state,
-          );
-
-          console.log(`📍 Cidade: ${city.city}, Estado: ${city.state}`);
-          console.log(`🏢 ${units.length} unidades encontradas`);
-
-          for (const unit of units) {
-            const offers = await this.fetchOffersByUnit(
-              unit.unitId,
+        for (const modality of modalities) {
+          try {
+            const units = await this.fetchUnitsByCourse(
               courseId,
-              unit.city,
-              unit.state,
               courseName,
+              city.city,
+              city.state,
+              modality,
             );
 
-            const offerKey = `offers:anhanguera:${courseId}:${unit.unitId}`;
-            const unitKey = `unit:anhanguera:${unit.unitId}`;
-
-            await this.redisService.set(
-              offerKey,
-              JSON.stringify(offers),
-              60 * 60 * 24 * 7,
+            console.log(
+              `📍 Cidade: ${city.city}, Estado: ${city.state}, Modalidade: ${modality}`,
             );
-            await this.redisService.set(
-              unitKey,
-              JSON.stringify(unit),
-              60 * 60 * 24 * 7,
-            );
+            console.log(`🏢 ${units.length} unidades encontradas`);
 
-            console.log(`✅ Unidade ${unit.unitId} | ${offers.length} ofertas`);
+            for (const unit of units) {
+              const offers = await this.fetchOffersByUnit(
+                unit.unitId,
+                courseId,
+                unit.city,
+                unit.state,
+                courseName,
+                modality,
+              );
+
+              const offerKey = `offers:anhanguera:${courseId}:${unit.unitId}:${modality}`;
+              const unitKey = `unit:anhanguera:${unit.unitId}`;
+
+              await this.redisService.set(
+                offerKey,
+                JSON.stringify(offers),
+                60 * 60 * 24 * 7,
+              );
+              await this.redisService.set(
+                unitKey,
+                JSON.stringify(unit),
+                60 * 60 * 24 * 7,
+              );
+
+              console.log(
+                `✅ Unidade ${unit.unitId} | ${offers.length} ofertas`,
+              );
+            }
+          } catch (error) {
+            console.error(
+              `❌ Erro em ${uc.course.name} - ${city.city}/${city.state} (${modality})`,
+              error.message,
+            );
           }
-        } catch (error) {
-          console.error(
-            `❌ Erro em ${uc.course.name} - ${city.city}/${city.state}`,
-            error.message,
-          );
         }
       }
     }
