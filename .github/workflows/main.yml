@@ -1,0 +1,16 @@
+name: Sync Anhanguera Offers
+
+on:
+  schedule:
+    - cron: '0 2 * * 5' # sexta-feira às 2h da manhã (UTC-3 = 5h UTC)
+  workflow_dispatch:
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Executar sync-all no Railway
+        run: |
+          curl -X POST https://bolsaclick-service-production.up.railway.app/partner/anhanguera/sync-all \
+            -H "x-api-key: ${{ secrets.CRON_API_KEY }}"
