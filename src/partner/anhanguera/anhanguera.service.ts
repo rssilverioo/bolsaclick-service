@@ -94,6 +94,8 @@ export class AnhangueraService {
   }
 
   async syncAllOffers() {
+
+
     const today = format(new Date(), 'yyyy-MM-dd');
     const previous = format(new Date(Date.now() - 1000 * 60 * 60 * 24 * 7), 'yyyy-MM-dd');
 
@@ -119,7 +121,7 @@ export class AnhangueraService {
     const cities = await this.prisma.city.findMany();
 
     const modalities = ['A distância', 'Presencial', 'Semipresencial'];
-
+ let totalOffers = 0;
     for (const uc of universityCourses) {
       const courseId = uc.externalId;
       const courseName = uc.externalName;
@@ -159,7 +161,7 @@ export class AnhangueraService {
 
               await this.redisService.set(offerKey, JSON.stringify(offers), 60 * 60 * 24 * 7);
               await this.redisService.set(unitKey, JSON.stringify(unit), 60 * 60 * 24 * 7);
-
+ totalOffers += offers.length;
               console.log(
                 `✅ Unidade ${unit.unitId} | ${offers.length} ofertas`,
               );
@@ -173,8 +175,9 @@ export class AnhangueraService {
         }
       }
     }
-
+  console.log(`🎯 Total de ofertas cadastradas: ${totalOffers}`);
     console.log('🎉 Finalizado syncAllOffers');
+    return totalOffers; 
   }
 
   async deleteAllAnhangueraData() {

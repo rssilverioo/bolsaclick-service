@@ -13,17 +13,18 @@ export class AnhangueraController {
   constructor(private readonly anhangueraService: AnhangueraService) {}
 
   @Post('sync-all')
-  syncAll(@Headers('x-api-key') apiKey: string) {
+  async syncAll(@Headers('x-api-key') apiKey: string) {
     if (apiKey !== process.env.CRON_API_KEY) {
       throw new UnauthorizedException('Invalid API Key');
     }
 
-    this.anhangueraService
-      .syncAllOffers()
-      .then(() => console.log('✅ Sync completed'))
-      .catch((err) => console.error('❌ Error during sync', err));
+    const totalOffers = await this.anhangueraService.syncAllOffers();
 
-    return { success: true, message: 'Sync started in background' };
+    return {
+      success: true,
+      message: 'Sync finalizado com sucesso',
+      totalOffers,
+    };
   }
 
   @Post('flush-all')
