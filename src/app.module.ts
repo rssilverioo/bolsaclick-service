@@ -7,7 +7,6 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UniversityModule } from './university/university.module';
 import { CityModule } from './city/city.module';
 import { AnhangueraModule } from './partner/anhanguera/anhanguera.module';
-import { OffersAnhangueraModule } from './partner/anhanguera/offers/offers.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OffersModule } from './offers/offers.module';
 
@@ -21,7 +20,6 @@ import { OffersModule } from './offers/offers.module';
     UniversityModule,
     CityModule,
     AnhangueraModule,
-    OffersAnhangueraModule,
     OffersModule,
   ],
   controllers: [AppController],

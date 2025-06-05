@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 export interface ShowOfferResponse {
   offerId: string;
   shift: string;

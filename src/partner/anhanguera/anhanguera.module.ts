@@ -7,5 +7,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 @Module({
   controllers: [AnhangueraController],
   providers: [AnhangueraService, PrismaService, RedisService],
+  exports: [AnhangueraService],
 })
 export class AnhangueraModule {}

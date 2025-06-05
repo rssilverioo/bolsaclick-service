@@ -7,8 +7,6 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { RedisService } from 'src/redis/redis.service';
-import { Cron } from '@nestjs/schedule';
-import { format } from 'date-fns';
 
 export interface ShowOfferResponse {
   offerId: string;
@@ -34,15 +32,8 @@ export interface ShowOfferResponse {
 export class AnhangueraService {
   constructor(
     private readonly redisService: RedisService,
-    private readonly prisma: PrismaService,
+    public readonly prisma: PrismaService,
   ) {}
-
-  @Cron('0 2 * * 5')
-  async handleWeeklySync() {
-    console.log('🔄 [CRON] Iniciando syncAllOffers para Anhanguera...');
-    await this.syncAllOffers();
-    console.log('✅ [CRON] Finalizado syncAllOffers para Anhanguera.');
-  }
 
   async fetchUnitsByCourse(
     courseId: string,
@@ -50,7 +41,7 @@ export class AnhangueraService {
     city: string,
     state: string,
     modality: string,
-  ) {
+  ): Promise<any[]> {
     const url = `https://api.consultoriaeducacao.app.br/offers/v3/showCaseFilter?brand=anhanguera&modality=${encodeURIComponent(
       modality,
     )}&city=${encodeURIComponent(city)}&state=${state}&course=${courseId}&courseName=${encodeURIComponent(
@@ -92,116 +83,159 @@ export class AnhangueraService {
 
     return offers;
   }
+async getOffersByCourse(
+  course: string,
+  city?: string,
+  state?: string,
+  modality?: string,
+): Promise<ShowOfferResponse[]> {
+  const resolvedCity = city || 'São Paulo';
+  const resolvedState = state || 'SP';
+  const resolvedModality = modality || 'A distância';
 
-  async syncAllOffers(): Promise<number> {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const previous = format(
-      new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
-      'yyyy-MM-dd',
-    );
+  const universityCourse = await this.prisma.universityCourse.findFirst({
+    where: {
+      course: {
+        slug: course,
+      },
+      university: {
+        slug: 'anhanguera',
+      },
+    },
+    include: {
+      course: true,
+      university: true,
+    },
+  });
 
-    console.log(`🕒 Rodando sync para data: ${today}`);
-    console.log(`🧹 Limpando dados antigos: ${previous}`);
+  if (!universityCourse) {
+    throw new Error('Curso da Anhanguera não encontrado');
+  }
 
-    await this.redisService.deleteByPattern('offers:anhanguera:full');
+  return this.getOffersByCourseAndLocation(
+    universityCourse.externalId,
+    universityCourse.externalName,
+    universityCourse.course.slug,
+    universityCourse.course.name,
+    resolvedCity,
+    resolvedState,
+    resolvedModality,
+  );
+}
 
-    const universityCourses = await this.prisma.universityCourse.findMany({
-      where: { university: { slug: 'anhanguera' } },
-      include: { course: true, university: true },
+  async getOffersBySlug(
+    slug: string,
+    city?: string,
+    state?: string,
+    modality?: string,
+  ): Promise<ShowOfferResponse[]> {
+    const resolvedCity = city || 'São Paulo';
+    const resolvedState = state || 'SP';
+    const resolvedModality = modality || 'A distância';
+
+    const universityCourse = await this.prisma.universityCourse.findFirst({
+      where: {
+        course: {
+          slug,
+        },
+        university: {
+          slug: 'anhanguera',
+        },
+      },
+      include: {
+        course: true,
+        university: true,
+      },
     });
 
-    const cities = await this.prisma.city.findMany();
-    const modalities = ['A distância', 'Presencial', 'Semipresencial'];
+    if (!universityCourse) {
+      throw new Error('Curso da Anhanguera não encontrado');
+    }
+
+    return this.getOffersByCourseAndLocation(
+      universityCourse.externalId,
+      universityCourse.externalName,
+      universityCourse.course.slug,
+      universityCourse.course.name,
+      resolvedCity,
+      resolvedState,
+      resolvedModality,
+    );
+  }
+
+  async getOffersByCourseAndLocation(
+    courseId: string,
+    courseName: string,
+    courseSlug: string,
+    courseNameInternal: string,
+    city: string,
+    state: string,
+    modality: string,
+  ): Promise<ShowOfferResponse[]> {
+    const key = `offers:anhanguera:${courseId}:${city}:${state}:${modality}`;
+
+    const cached = await this.redisService.get(key);
+    if (typeof cached === 'string') {
+      console.log(`♻️ Cache hit para ${key}`);
+      return JSON.parse(cached) as ShowOfferResponse[];
+    }
+
+    const units = await this.fetchUnitsByCourse(
+      courseId,
+      courseName,
+      city,
+      state,
+      modality,
+    );
+
+    if (!units.length) return [];
 
     const fullOffers: ShowOfferResponse[] = [];
-    let totalOffers = 0;
 
-    for (const uc of universityCourses) {
-      const courseId = uc.externalId;
-      const courseName = uc.externalName;
-      const courseSlug = uc.course.slug;
-      const courseNameInternal = uc.course.name;
-      const brand = uc.university.slug;
+    for (const unit of units) {
+      try {
+        const offers = await this.fetchOffersByUnit(
+          unit.unitId,
+          courseId,
+          unit.city,
+          unit.state,
+          courseName,
+          modality,
+        );
 
-      for (const city of cities) {
-        for (const modality of modalities) {
-          try {
-            const units = await this.fetchUnitsByCourse(
-              courseId,
-              courseName,
-              city.city,
-              city.state,
+        for (const offer of offers) {
+          fullOffers.push({
+            offerId: offer.offerId,
+            shift: offer.shift ?? '',
+            subscriptionValue: offer.subscriptionValue ?? 0,
+            montlyFeeFrom: offer.montlyFeeFrom ?? 0,
+            montlyFeeTo: offer.montlyFeeTo ?? 0,
+            expiredAt: offer.expiredAt ?? '',
+            brand: 'anhanguera',
+            courseName,
+            courseSlug,
+            courseNameInternal,
+            courseExternalId: courseId,
+            unit: {
+              address: unit.unitAddress || '',
+              city: unit.unitCity || unit.city || '',
+              state: unit.unitState || unit.state || '',
               modality,
-            );
-
-            for (const unit of units) {
-              const offers = await this.fetchOffersByUnit(
-                unit.unitId,
-                courseId,
-                unit.city,
-                unit.state,
-                courseName,
-                modality,
-              );
-
-              for (const offer of offers) {
-                fullOffers.push({
-                  offerId: offer.offerId,
-                  shift: offer.shift ?? '',
-                  subscriptionValue: offer.subscriptionValue ?? 0,
-                  montlyFeeFrom: offer.montlyFeeFrom ?? 0,
-                  montlyFeeTo: offer.montlyFeeTo ?? 0,
-                  expiredAt: offer.expiredAt ?? '',
-                  brand,
-                  courseName,
-                  courseSlug,
-                  courseNameInternal,
-                  courseExternalId: courseId,
-                  unit: {
-                    address: unit.unitAddress || '',
-                    city: unit.unitCity || unit.city || '',
-                    state: unit.unitState || unit.state || '',
-                    modality,
-                  },
-                });
-              }
-
-              totalOffers += offers.length;
-              console.log(`✅ ${offers.length} ofertas salvas para unidade ${unit.unitId}`);
-            }
-          } catch (error) {
-            console.error(
-              `❌ Erro em ${uc.course.name} - ${city.city}/${city.state} (${modality})`,
-              error.message,
-            );
-          }
+            },
+          });
         }
+      } catch (error) {
+        console.error(`❌ Erro ao buscar ofertas da unidade ${unit.unitId}:`, error.message);
       }
     }
 
     await this.redisService.set(
-      'offers:anhanguera:full',
+      key,
       JSON.stringify(fullOffers),
+      60 * 60 * 24 * 7, // 7 dias
     );
 
-    console.log(`📦 ${fullOffers.length} ofertas salvas em offers:anhanguera:full`);
-    console.log(`🎯 Total de ofertas cadastradas: ${totalOffers}`);
-
-    // ✅ Enviar webhook para o n8n
-    try {
-      await axios.post('https://aula-n8n.jru58d.easypanel.host/webhook/sync-finished', {
-        status: 'success',
-        source: 'anhanguera',
-        totalOffers,
-        syncedAt: new Date().toISOString(),
-      });
-
-      console.log('📬 Webhook de finalização enviado para o n8n');
-    } catch (err) {
-      console.error('❌ Falha ao enviar webhook para o n8n:', err.message);
-    }
-
-    return totalOffers;
+    return fullOffers;
   }
 
   async deleteAllAnhangueraData() {
