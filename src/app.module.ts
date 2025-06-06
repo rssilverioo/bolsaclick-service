@@ -9,6 +9,7 @@ import { CityModule } from './city/city.module';
 import { AnhangueraModule } from './partner/anhanguera/anhanguera.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OffersModule } from './offers/offers.module';
+import { UnoparModule } from './partner/unopar/unopar.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OffersModule } from './offers/offers.module';
     UniversityModule,
     CityModule,
     AnhangueraModule,
+    UnoparModule,
     OffersModule,
   ],
   controllers: [AppController],

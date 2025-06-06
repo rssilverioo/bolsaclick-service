@@ -8,12 +8,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { AnhangueraService } from './anhanguera.service';
+import { UnoparService } from './unopar.service';
 
-@Controller('partner/anhanguera')
+@Controller('partner/unopar')
 @ApiExcludeController()
-export class AnhangueraController {
-  constructor(private readonly anhangueraService: AnhangueraService) {}
+export class UnoparController {
+  constructor(private readonly unoparService: UnoparService) {}
 
   @Post('flush-all')
   async flushAll(@Headers('x-api-key') apiKey: string) {
@@ -21,11 +21,11 @@ export class AnhangueraController {
       throw new UnauthorizedException('Invalid API Key');
     }
 
-    await this.anhangueraService.deleteAllAnhangueraData();
+    await this.unoparService.deleteAllUnoparData();
 
     return {
       success: true,
-      message: 'Dados da Anhanguera removidos do Redis.',
+      message: 'Dados da Unopar removidos do Redis.',
     };
   }
 
@@ -40,11 +40,6 @@ export class AnhangueraController {
       throw new BadRequestException('O parâmetro "course" é obrigatório');
     }
 
-    return this.anhangueraService.getOffersByCourse(
-      course,
-      city,
-      state,
-      modality,
-    );
+    return this.unoparService.getOffersByCourse(course, city, state, modality);
   }
 }

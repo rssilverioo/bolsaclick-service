@@ -25,6 +25,10 @@ export interface ShowOfferResponse {
     city: string;
     state: string;
     modality: string;
+    postalCode?: string;
+    number?: string;
+    complement?: string;
+    district?: string;
   };
 }
 
@@ -32,7 +36,7 @@ export interface ShowOfferResponse {
 export class AnhangueraService {
   constructor(
     private readonly redisService: RedisService,
-    public readonly prisma: PrismaService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async fetchUnitsByCourse(
@@ -67,9 +71,8 @@ export class AnhangueraService {
     )}&unitId=${unitId}&city=${encodeURIComponent(city)}&state=${state}&app=DC`;
 
     const { data } = await axios.get(url);
-
-    const offers: ShowOfferResponse[] = [];
     const shifts = data?.data?.shifts as Record<string, unknown>;
+    const offers: ShowOfferResponse[] = [];
 
     if (shifts) {
       for (const group of Object.values(shifts)) {
@@ -83,48 +86,9 @@ export class AnhangueraService {
 
     return offers;
   }
-async getOffersByCourse(
-  course: string,
-  city?: string,
-  state?: string,
-  modality?: string,
-): Promise<ShowOfferResponse[]> {
-  const resolvedCity = city || 'São Paulo';
-  const resolvedState = state || 'SP';
-  const resolvedModality = modality || 'A distância';
 
-  const universityCourse = await this.prisma.universityCourse.findFirst({
-    where: {
-      course: {
-        slug: course,
-      },
-      university: {
-        slug: 'anhanguera',
-      },
-    },
-    include: {
-      course: true,
-      university: true,
-    },
-  });
-
-  if (!universityCourse) {
-    throw new Error('Curso da Anhanguera não encontrado');
-  }
-
-  return this.getOffersByCourseAndLocation(
-    universityCourse.externalId,
-    universityCourse.externalName,
-    universityCourse.course.slug,
-    universityCourse.course.name,
-    resolvedCity,
-    resolvedState,
-    resolvedModality,
-  );
-}
-
-  async getOffersBySlug(
-    slug: string,
+  async getOffersByCourse(
+    course: string,
     city?: string,
     state?: string,
     modality?: string,
@@ -136,7 +100,7 @@ async getOffersByCourse(
     const universityCourse = await this.prisma.universityCourse.findFirst({
       where: {
         course: {
-          slug,
+          slug: course,
         },
         university: {
           slug: 'anhanguera',
@@ -157,10 +121,20 @@ async getOffersByCourse(
       universityCourse.externalName,
       universityCourse.course.slug,
       universityCourse.course.name,
+      universityCourse.university.name,
       resolvedCity,
       resolvedState,
       resolvedModality,
     );
+  }
+
+  async getOffersBySlug(
+    slug: string,
+    city?: string,
+    state?: string,
+    modality?: string,
+  ): Promise<ShowOfferResponse[]> {
+    return this.getOffersByCourse(slug, city, state, modality);
   }
 
   async getOffersByCourseAndLocation(
@@ -171,6 +145,7 @@ async getOffersByCourse(
     city: string,
     state: string,
     modality: string,
+    universityName: string,
   ): Promise<ShowOfferResponse[]> {
     const key = `offers:anhanguera:${courseId}:${city}:${state}:${modality}`;
 
@@ -211,16 +186,20 @@ async getOffersByCourse(
             montlyFeeFrom: offer.montlyFeeFrom ?? 0,
             montlyFeeTo: offer.montlyFeeTo ?? 0,
             expiredAt: offer.expiredAt ?? '',
-            brand: 'anhanguera',
+            brand: universityName,
             courseName,
             courseSlug,
             courseNameInternal,
             courseExternalId: courseId,
             unit: {
               address: unit.unitAddress || '',
-              city: unit.unitCity || unit.city || '',
-              state: unit.unitState || unit.state || '',
+              city: unit.unitCity || '',
+              state: unit.unitState || '',
               modality,
+              postalCode: unit.unitPostalCode || '',
+              number: unit.unitNumber || '',
+              complement: unit.unitComplement || '',
+              district: unit.unitDistrict || '',
             },
           });
         }
@@ -229,11 +208,7 @@ async getOffersByCourse(
       }
     }
 
-    await this.redisService.set(
-      key,
-      JSON.stringify(fullOffers),
-      60 * 60 * 24 * 7, // 7 dias
-    );
+    await this.redisService.set(key, JSON.stringify(fullOffers), 60 * 60 * 24 * 7); // 7 dias
 
     return fullOffers;
   }

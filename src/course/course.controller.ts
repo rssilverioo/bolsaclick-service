@@ -52,4 +52,15 @@ export class CourseController {
       data,
     );
   }
+
+  @Post('associate-one/:universitySlug')
+  @ApiOperation({ summary: 'Associate a single course with a university' })
+  async associateOneCourse(
+    @Param('universitySlug') universitySlug: string,
+    @Body() course: BulkAssociateFromUniversitySlugDto,
+  ) {
+    return this.courseService.bulkAssociateFromUniversitySlug(universitySlug, [
+      course,
+    ]);
+  }
 }
