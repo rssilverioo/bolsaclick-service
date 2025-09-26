@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 export interface ShowOfferResponse {
   offerId: string;
   shift: string;
@@ -9,19 +8,16 @@ export interface ShowOfferResponse {
   brand: string;
   courseName: string;
   courseSlug: string;
-  courseExternalId: string; // ✅ Adicionado este campo
+  courseExternalId: string;
+  courseNameInternal: string;
   unit: {
     address: string;
     city: string;
     state: string;
     modality: string;
+    postalCode?: string;
+    number?: string;
+    complement?: string;
+    district?: string;
   };
-}
-
-export interface UniversitySlugParam {
-  slug: string;
-}
-
-export interface CourseSlugParam {
-  slug: string;
 }

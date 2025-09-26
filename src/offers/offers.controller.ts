@@ -7,7 +7,7 @@ export class OffersController {
   constructor(private readonly offersService: OffersService) {}
 
   @Get()
-  getOffers(@Query() query: GetOffersParams) {
+  async getOffers(@Query() query: GetOffersParams) {
     return this.offersService.getOffers(query);
   }
 }

@@ -3,11 +3,10 @@ import { OffersService } from './offers.service';
 import { OffersController } from './offers.controller';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { RedisModule } from 'src/redis/redis.module';
-import { AnhangueraModule } from 'src/partner/anhanguera/anhanguera.module';
-import { UnoparModule } from 'src/partner/unopar/unopar.module';
+import { KrotonModule } from './providers/kroton/kroton.module'; 
 
 @Module({
-  imports: [PrismaModule, RedisModule, AnhangueraModule, UnoparModule],
+  imports: [PrismaModule, RedisModule, KrotonModule], 
   controllers: [OffersController],
   providers: [OffersService],
 })
