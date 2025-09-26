@@ -4,8 +4,8 @@ import axios, { AxiosError } from 'axios';
 import { ShowOfferResponse } from 'src/offers/offer.type';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { RedisService } from 'src/redis/redis.service';
-
 import { normalizeModality } from 'src/utils/normalize-modality';
+import { uniqBy } from 'lodash';
 
 type UnitFromAPI = {
   unitId: string;
@@ -30,12 +30,8 @@ export class KrotonService {
   constructor(
     private readonly redis: RedisService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
-  /**
-   * Entrada comum: brand (anhanguera|unopar|ampli), courseSlug interno,
-   * cidade/UF/modality.
-   */
   async getOffersByCourseSlug(
     brand: string,
     courseSlug: string,
@@ -69,15 +65,12 @@ export class KrotonService {
     );
   }
 
-  /**
-   * Entrada avançada: já temos o externalId/Nome do curso (por brand).
-   */
   async getOffersByCourseAndLocation(
     brand: string,
     courseId: string,
-    courseNameExternal: string,      // como a Kroton conhece
-    courseSlug: string,              // nosso slug interno
-    courseNameInternal: string,      // nosso nome interno
+    courseNameExternal: string,
+    courseSlug: string,
+    courseNameInternal: string,
     city: string,
     state: string,
     modality: string,
@@ -110,7 +103,6 @@ export class KrotonService {
       return [];
     }
 
-    // Chama offers por unidade (em paralelo)
     const allOffersArrays = await Promise.all(
       units.map((u) => {
         const unitModality = normalizeModality(u.modality ?? normalizedModality);
@@ -131,9 +123,8 @@ export class KrotonService {
       }),
     );
 
-    // Achata e normaliza (mapeia campos para nosso padrão)
     const fullOffers = allOffersArrays.flat().map((offer, idx) => {
-      const unit = units[idx] ?? units[0]; // fallback seguro
+      const unit = units[idx] ?? units[0];
       return this.normalizeOffer(
         offer,
         {
@@ -156,11 +147,18 @@ export class KrotonService {
       );
     });
 
-    await this.redis.set(cacheKey, JSON.stringify(fullOffers), TTL_SECONDS);
-    return fullOffers;
-  }
+    // 🔹 Remove duplicados (considerando offerId + unidade)
+    const dedupedOffers = uniqBy(
+      fullOffers.map((o) => ({
+        ...o,
+        _dedupKey: `${o.offerId}-${o.unit.city}-${o.unit.state}`,
+      })),
+      '_dedupKey',
+    ).map(({ _dedupKey, ...rest }) => rest);
 
-  /** --------------- PRIVATE --------------- */
+    await this.redis.set(cacheKey, JSON.stringify(dedupedOffers), TTL_SECONDS);
+    return dedupedOffers;
+  }
 
   private async fetchUnitsByCourse(
     brand: string,
@@ -248,8 +246,11 @@ export class KrotonService {
       modality: string;
     },
   ): ShowOfferResponse {
+      this.logger.debug(`Offer raw keys: ${Object.keys(raw)}`);
+
     return {
       offerId: String(raw.offerId ?? ''),
+      offerBusinessKey: String(raw.offerBusinessKey ?? ''),
       shift: String(raw.shift ?? ''),
       subscriptionValue: Number(raw.subscriptionValue ?? 0),
       monthlyFeeFrom: Number(raw.montlyFeeFrom ?? raw.monthlyFeeFrom ?? 0),
@@ -264,7 +265,7 @@ export class KrotonService {
         address: unit.address,
         city: unit.city,
         state: unit.state,
-        modality: normalizeModality(meta.modality), // ✅ sempre normalizado
+        modality: normalizeModality(meta.modality),
         postalCode: unit.postalCode,
         number: unit.number,
         complement: unit.complement,
@@ -279,10 +280,9 @@ export class KrotonService {
       return `HTTP ${e.response.status} - ${JSON.stringify(e.response.data).slice(0, 300)}`;
     }
     if (e?.request) return 'Sem resposta da API';
-    return (e?.message ?? String(err));
+    return e?.message ?? String(err);
   }
 
-  /** util: flush por brand (debug/admin) */
   async flushBrand(brand: string) {
     await this.redis.deleteByPattern(`offers:${brand}:*`);
     await this.redis.deleteByPattern(`unit:${brand}:*`);

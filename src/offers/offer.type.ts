@@ -1,5 +1,6 @@
 export interface ShowOfferResponse {
   offerId: string;
+  offerBusinessKey: string;
   shift: string;
   subscriptionValue: number;
   monthlyFeeFrom: number;
