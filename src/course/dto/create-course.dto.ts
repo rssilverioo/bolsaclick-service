@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-// src/course/dto/create-course.dto.ts
 import {
   IsNotEmpty,
   IsOptional,
@@ -29,4 +28,17 @@ export class CreateCourseDto {
 
   @IsEnum(CourseModality)
   modality: CourseModality;
+
+  // 🔹 novos campos
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  targetAudience?: string;
+
+  @IsOptional()
+  @IsString()
+  jobMarket?: string;
 }

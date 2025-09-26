@@ -30,7 +30,31 @@ model Course {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   modality          CourseModality     @default(GRADUACAO)
+  description       String?
+  targetAudience    String?
+  jobMarket         String?
   universityCourses UniversityCourse[]
+  courseCurriculums CourseCurriculum[]
+}
+
+model CourseCurriculum {
+  id          String  @id @default(uuid())
+  courseId    String
+  course      Course  @relation(fields: [courseId], references: [id])
+  semester    Int // exemplo: 1, 2, 3
+  title       String? // opcional: nome do semestre ("1º Semestre")
+  description String? // texto explicando o semestre todo
+
+  subjects Subject[]
+}
+
+model Subject {
+  id           String           @id @default(uuid())
+  curriculumId String
+  curriculum   CourseCurriculum @relation(fields: [curriculumId], references: [id])
+  name         String // "Banco de Dados", "Desenvolvimento Mobile"
+  workload     Int? // em horas
+  description  String?
 }
 
 model UniversityCourse {

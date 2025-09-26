@@ -15,10 +15,10 @@ type UniversityCourseInput = {
 
 @Injectable()
 export class CourseService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(createCourseDto: CreateCourseDto) {
-    const { name, slug, universityAssociations } = createCourseDto;
+    const { name, slug, description, targetAudience, jobMarket, universityAssociations } = createCourseDto;
 
     const generatedSlug = slug ?? slugify(name, { lower: true, strict: true });
 
@@ -34,6 +34,9 @@ export class CourseService {
       data: {
         name,
         slug: generatedSlug,
+        description,
+        targetAudience,
+        jobMarket,
       },
     });
 
