@@ -11,6 +11,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { OffersModule } from './offers/offers.module';
 import { UnoparModule } from './partner/unopar/unopar.module';
 
+import { ShowCaseModule } from './show-case/show-case.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -23,6 +25,8 @@ import { UnoparModule } from './partner/unopar/unopar.module';
     AnhangueraModule,
     UnoparModule,
     OffersModule,
+
+    ShowCaseModule,
   ],
   controllers: [AppController],
 })

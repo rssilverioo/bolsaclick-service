@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import axios, { AxiosError } from 'axios';
 import { ShowOfferResponse } from 'src/offers/offer.type';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -23,6 +23,7 @@ type UnitFromAPI = {
 };
 
 const TTL_SECONDS = 60 * 60 * 24 * 7; // 7 dias
+const MODALITY_FALLBACKS = ['Presencial', 'A distância', 'Semipresencial'];
 
 @Injectable()
 export class KrotonService {
@@ -31,7 +32,7 @@ export class KrotonService {
   constructor(
     private readonly redis: RedisService,
     private readonly prisma: PrismaService,
-  ) { }
+  ) {}
 
   async getOffersByCourseSlug(
     brand: string,
@@ -50,7 +51,7 @@ export class KrotonService {
     });
 
     if (!universityCourse) {
-      throw new Error(`Curso não encontrado para ${brand}`);
+      throw new NotFoundException(`Curso não encontrado para a universidade '${brand}'.`);
     }
 
     return this.getOffersByCourseAndLocation(
@@ -86,7 +87,7 @@ export class KrotonService {
       try {
         return JSON.parse(cached) as ShowOfferResponse[];
       } catch {
-        // se der parse error, ignora e continua
+        // ignore parse error
       }
     }
 
@@ -100,8 +101,67 @@ export class KrotonService {
     );
 
     if (!units.length) {
-      await this.redis.set(cacheKey, JSON.stringify([]), TTL_SECONDS);
-      return [];
+      // 🔹 Buscar alternativas em outras modalidades
+      const alternatives: Record<string, ShowOfferResponse[]> = {};
+
+      for (const alt of MODALITY_FALLBACKS) {
+        if (alt === normalizedModality) continue;
+        const altUnits = await this.fetchUnitsByCourse(
+          brand,
+          courseId,
+          courseNameExternal,
+          city,
+          state,
+          alt,
+        );
+
+        if (altUnits.length > 0) {
+          const offers = await Promise.all(
+            altUnits.map((u) =>
+              this.fetchOffersByUnit(
+                brand,
+                u.unitId,
+                courseId,
+                u.city,
+                u.state,
+                courseNameExternal,
+                normalizeModality(alt),
+              ).catch(() => []),
+            ),
+          );
+
+          alternatives[alt] = offers.flat().map((offer, idx) =>
+            this.normalizeOffer(
+              offer,
+              {
+                address: altUnits[idx]?.unitAddress || '',
+                city: altUnits[idx]?.unitCity || altUnits[idx]?.city || '',
+                state: altUnits[idx]?.unitState || altUnits[idx]?.state || '',
+                postalCode: altUnits[idx]?.unitPostalCode || '',
+                number: altUnits[idx]?.unitNumber || '',
+                complement: altUnits[idx]?.unitComplement || '',
+                district: altUnits[idx]?.unitDistrict || '',
+              },
+              {
+                brand: universityName,
+                courseNameExternal,
+                courseSlug,
+                courseNameInternal,
+                courseExternalId: courseId,
+                modality: alt,
+                source: altUnits[idx]?.source,
+              },
+            ),
+          );
+        }
+      }
+
+      throw new NotFoundException({
+        statusCode: 404,
+        error: 'Not Found',
+        message: `Nenhuma unidade encontrada para '${courseNameExternal}' em ${city}/${state} (${normalizedModality}).`,
+        alternatives,
+      });
     }
 
     const allOffersArrays = await Promise.all(
@@ -149,7 +209,6 @@ export class KrotonService {
       );
     });
 
-    // 🔹 Remove duplicados (considerando offerId + unidade)
     const dedupedOffers = uniqBy(
       fullOffers.map((o) => ({
         ...o,
@@ -181,13 +240,20 @@ export class KrotonService {
       `&courseName=${encodeURIComponent(courseNameExternal)}` +
       `&app=DC&size=10`;
 
-    const { data } = await axios.get(url);
-
-    return ((data?.data as UnitFromAPI[]) || []).map((u) => ({
-      ...u,
-      modality: normalizeModality(u.modality),
-      source: u.source ?? '',
-    }));
+    try {
+      const { data } = await axios.get(url);
+      return ((data?.data as UnitFromAPI[]) || []).map((u) => ({
+        ...u,
+        modality: normalizeModality(u.modality),
+        source: u.source ?? '',
+      }));
+    } catch (err) {
+      const e = err as AxiosError;
+      if (e.response?.status === 404) {
+        return [];
+      }
+      throw err;
+    }
   }
 
   private async fetchOffersByUnit(
@@ -247,11 +313,9 @@ export class KrotonService {
       courseNameInternal: string;
       courseExternalId: string;
       modality: string;
-       source?: string; 
+      source?: string;
     },
   ): ShowOfferResponse {
-      this.logger.debug(`Offer raw keys: ${Object.keys(raw)}`);
-
     return {
       offerId: String(raw.offerId ?? ''),
       offerBusinessKey: String(raw.offerBusinessKey ?? ''),
