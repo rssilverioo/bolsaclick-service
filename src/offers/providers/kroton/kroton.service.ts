@@ -19,6 +19,7 @@ type UnitFromAPI = {
   modality?: string;
   city: string;
   state: string;
+  source?: string;
 };
 
 const TTL_SECONDS = 60 * 60 * 24 * 7; // 7 dias
@@ -143,6 +144,7 @@ export class KrotonService {
           courseNameInternal,
           courseExternalId: courseId,
           modality: normalizedModality,
+          source: unit.source,
         },
       );
     });
@@ -184,6 +186,7 @@ export class KrotonService {
     return ((data?.data as UnitFromAPI[]) || []).map((u) => ({
       ...u,
       modality: normalizeModality(u.modality),
+      source: u.source ?? '',
     }));
   }
 
@@ -244,6 +247,7 @@ export class KrotonService {
       courseNameInternal: string;
       courseExternalId: string;
       modality: string;
+       source?: string; 
     },
   ): ShowOfferResponse {
       this.logger.debug(`Offer raw keys: ${Object.keys(raw)}`);
@@ -261,6 +265,7 @@ export class KrotonService {
       courseSlug: meta.courseSlug,
       courseNameInternal: meta.courseNameInternal,
       courseExternalId: meta.courseExternalId,
+      source: meta.source ?? String(raw.source ?? ''),
       unit: {
         address: unit.address,
         city: unit.city,

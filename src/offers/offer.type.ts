@@ -11,6 +11,7 @@ export interface ShowOfferResponse {
   courseSlug: string;
   courseExternalId: string;
   courseNameInternal: string;
+  source?: string;  
   unit: {
     address: string;
     city: string;
